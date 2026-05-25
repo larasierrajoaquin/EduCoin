@@ -1,4 +1,4 @@
-# MeritCoin — Sistema de Recompensas Académicas Digitales
+# EduCoin — Sistema de Recompensas Académicas Digitales
 
 Sistema híbrido off-chain/on-chain que integra tokens de recompensa (ERC-20)
 e insignias digitales verificables (ERC-1155) con la plataforma Moodle.
