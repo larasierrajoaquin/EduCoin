@@ -1,0 +1,403 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/meritcoin/db" VERSION="2026051001" COMMENT="MeritCoin plugin tables"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd">
+  <TABLES>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         Cola de eventos pendientes de envío al backend.
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <TABLE NAME="local_meritcoin_queue" COMMENT="Queue of academic events to send to MeritCoin backend">
+      <FIELDS>
+        <FIELD NAME="id"             TYPE="int"    LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="event_id"       TYPE="char"   LENGTH="255" NOTNULL="true"
+               COMMENT="Unique event ID for idempotency"/>
+        <FIELD NAME="userid"         TYPE="int"    LENGTH="10"  NOTNULL="true"
+               COMMENT="Moodle user ID"/>
+        <FIELD NAME="courseid"       TYPE="int"    LENGTH="10"  NOTNULL="true"
+               COMMENT="Moodle course ID"/>
+        <FIELD NAME="cmid"           TYPE="int"    LENGTH="10"  NOTNULL="false"
+               COMMENT="Course module ID (null = calificacion final del curso)"/>
+        <FIELD NAME="activity_name"  TYPE="char"   LENGTH="255" NOTNULL="false" DEFAULT=""
+               COMMENT="Nombre de la actividad o del curso"/>
+        <FIELD NAME="event_type"     TYPE="char"   LENGTH="50"  NOTNULL="true"
+               COMMENT="completion o grade"/>
+        <FIELD NAME="grade"          TYPE="number" LENGTH="10"  DECIMALS="5" NOTNULL="false"
+               COMMENT="Calificacion del estudiante"/>
+        <FIELD NAME="coins_amount"   TYPE="number" LENGTH="10"  DECIMALS="2" NOTNULL="false"
+               COMMENT="Monedas calculadas segun la regla del curso/actividad"/>
+        <FIELD NAME="student_wallet" TYPE="char"   LENGTH="42"  NOTNULL="false"
+               COMMENT="Ethereum wallet; null mientras el evento queda pending_wallet"/>
+        <FIELD NAME="payload"        TYPE="text"   NOTNULL="true"
+               COMMENT="JSON payload completo para el backend"/>
+        <FIELD NAME="status"         TYPE="char"   LENGTH="20"  NOTNULL="true" DEFAULT="pending"
+               COMMENT="pending, pending_wallet, sent, failed"/>
+        <FIELD NAME="attempts"       TYPE="int"    LENGTH="3"   NOTNULL="true" DEFAULT="0"
+               COMMENT="Numero de intentos de envio"/>
+        <FIELD NAME="last_error"     TYPE="text"   NOTNULL="false"
+               COMMENT="Ultimo error del backend"/>
+        <FIELD NAME="timecreated"    TYPE="int"    LENGTH="10"  NOTNULL="true"/>
+        <FIELD NAME="timemodified"   TYPE="int"    LENGTH="10"  NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="queue_event_id_uix" UNIQUE="true"  FIELDS="event_id"
+               COMMENT="Idempotencia: un solo registro por event_id"/>
+        <INDEX NAME="queue_status_idx"   UNIQUE="false" FIELDS="status"
+               COMMENT="Filtra por pending / pending_wallet en la tarea programada"/>
+        <INDEX NAME="queue_userid_idx"   UNIQUE="false" FIELDS="userid"
+               COMMENT="Filtra eventos por usuario en el dashboard"/>
+        <INDEX NAME="queue_courseid_idx" UNIQUE="false" FIELDS="courseid"
+               COMMENT="Filtra eventos por curso en rules_service"/>
+      </INDEXES>
+    </TABLE>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         Reglas de recompensa por curso y/o actividad.
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <TABLE NAME="local_meritcoin_rules" COMMENT="Coins awarded per activity or course">
+      <FIELDS>
+        <FIELD NAME="id"           TYPE="int"    LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="courseid"     TYPE="int"    LENGTH="10"  NOTNULL="true"  DEFAULT="0"/>
+        <FIELD NAME="cmid"         TYPE="int"    LENGTH="10"  NOTNULL="false"
+               COMMENT="NULL = regla de curso o tipo; valor = regla de actividad específica"/>
+        <FIELD NAME="rule_scope"   TYPE="char"   LENGTH="20"  NOTNULL="true"  DEFAULT="activity"
+               COMMENT="activity, activity_type o course"/>
+        <FIELD NAME="mod_type"     TYPE="char"   LENGTH="50"  NOTNULL="false"
+               COMMENT="Tipo de módulo para scope=activity_type (assign, forum, quiz, etc.)"/>
+        <FIELD NAME="activityname" TYPE="char"   LENGTH="255" NOTNULL="false"
+               COMMENT="Nombre visible de la actividad, tipo o etiqueta de la regla"/>
+        <FIELD NAME="coins_amount" TYPE="number" LENGTH="10"  DECIMALS="2" NOTNULL="true" DEFAULT="0.00"
+               COMMENT="Cantidad fija de monedas para esta regla"/>
+        <FIELD NAME="coin_symbol"  TYPE="char"   LENGTH="20"  NOTNULL="true"  DEFAULT="MRT"
+               COMMENT="Simbolo de la moneda del curso"/>
+        <FIELD NAME="min_grade"    TYPE="number" LENGTH="10"  DECIMALS="5" NOTNULL="false"
+               COMMENT="Nota mínima para activar la regla; NULL = sin umbral"/>
+        <FIELD NAME="enabled"      TYPE="int"    LENGTH="1"   NOTNULL="true"  DEFAULT="1"
+               COMMENT="1 = activa, 0 = deshabilitada"/>
+        <FIELD NAME="timecreated"  TYPE="int"    LENGTH="10"  NOTNULL="true"  DEFAULT="0"/>
+        <FIELD NAME="timemodified" TYPE="int"    LENGTH="10"  NOTNULL="true"  DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="rules_courseid_idx"          UNIQUE="false" FIELDS="courseid"
+               COMMENT="Búsqueda de reglas por curso"/>
+        <INDEX NAME="rules_course_cmid_scope_idx" UNIQUE="false" FIELDS="courseid, cmid, rule_scope"
+               COMMENT="Rendimiento en búsquedas de regla específica; unicidad gestionada en PHP"/>
+        <INDEX NAME="rules_course_modtype_idx"    UNIQUE="false" FIELDS="courseid, mod_type, rule_scope"
+               COMMENT="Búsqueda de reglas por tipo de módulo"/>
+      </INDEXES>
+    </TABLE>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         Ledger de ganancias por curso.
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <TABLE NAME="local_meritcoin_earnings" COMMENT="Coins earned per course/activity">
+      <FIELDS>
+        <FIELD NAME="id"             TYPE="int"    LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="event_id"       TYPE="char"   LENGTH="255" NOTNULL="true"
+               COMMENT="Event ID already accepted; guarantees idempotency"/>
+        <FIELD NAME="userid"         TYPE="int"    LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="student_wallet" TYPE="char"   LENGTH="42"  NOTNULL="false"
+               COMMENT="Global wallet of the student, if available at earning time"/>
+        <FIELD NAME="courseid"       TYPE="int"    LENGTH="10"  NOTNULL="true" DEFAULT="0"
+               COMMENT="Course where the coins were earned"/>
+        <FIELD NAME="cmid"           TYPE="int"    LENGTH="10"  NOTNULL="false"
+               COMMENT="Activity; null for course-level events"/>
+        <FIELD NAME="event_type"     TYPE="char"   LENGTH="50"  NOTNULL="true"
+               COMMENT="completion o grade"/>
+        <FIELD NAME="coins_earned"   TYPE="number" LENGTH="10"  DECIMALS="2" NOTNULL="true" DEFAULT="0.00"/>
+        <FIELD NAME="coin_symbol"    TYPE="char"   LENGTH="20"  NOTNULL="true" DEFAULT="MRT"
+               COMMENT="Simbolo en el momento de la ganancia"/>
+        <FIELD NAME="timecreated"    TYPE="int"    LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="earnings_event_id_uix"    UNIQUE="true"  FIELDS="event_id"
+               COMMENT="Un solo registro por event_id"/>
+        <INDEX NAME="earnings_user_course_idx" UNIQUE="false" FIELDS="userid, courseid"
+               COMMENT="SUM de monedas por usuario y curso en rules_service"/>
+      </INDEXES>
+    </TABLE>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         Ledger de gasto por curso.
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <TABLE NAME="local_meritcoin_spend" COMMENT="Coins spent in course reward market">
+      <FIELDS>
+        <FIELD NAME="id"             TYPE="int"    LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="userid"         TYPE="int"    LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="student_wallet" TYPE="char"   LENGTH="42"  NOTNULL="false"/>
+        <FIELD NAME="courseid"       TYPE="int"    LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="reward_code"    TYPE="char"   LENGTH="100" NOTNULL="true"
+               COMMENT="Codigo interno de la recompensa canjeada"/>
+        <FIELD NAME="coins_spent"    TYPE="number" LENGTH="10"  DECIMALS="2" NOTNULL="true" DEFAULT="0.00"/>
+        <FIELD NAME="status"         TYPE="char"   LENGTH="20"  NOTNULL="true" DEFAULT="approved"
+               COMMENT="approved, rejected, cancelled"/>
+        <FIELD NAME="timecreated"    TYPE="int"    LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="spend_user_course_idx" UNIQUE="false" FIELDS="userid, courseid"
+               COMMENT="SUM de gasto por usuario y curso en rules_service"/>
+      </INDEXES>
+    </TABLE>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         Configuración de moneda por curso.
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <TABLE NAME="local_meritcoin_course_config" COMMENT="Per-course coin configuration">
+      <FIELDS>
+        <FIELD NAME="id"               TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="courseid"         TYPE="int"  LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="coin_name"        TYPE="char" LENGTH="50" NOTNULL="true" DEFAULT="MeritCoin"
+               COMMENT="Nombre de la moneda (ej: BioToken, MathCoin)"/>
+        <FIELD NAME="coin_symbol"      TYPE="char" LENGTH="10" NOTNULL="true" DEFAULT="MRT"
+               COMMENT="Simbolo de la moneda (ej: BIO, MTH)"/>
+        <FIELD NAME="contract_address" TYPE="char" LENGTH="42" NOTNULL="false" DEFAULT=""
+               COMMENT="Contrato ERC-20 especifico del curso (opcional)"/>
+        <FIELD NAME="timecreated"      TYPE="int"  LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timemodified"     TYPE="int"  LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary"     TYPE="primary" FIELDS="id"/>
+        <KEY NAME="uq_courseid" TYPE="unique"  FIELDS="courseid"
+             COMMENT="Un registro de configuracion por curso"/>
+      </KEYS>
+    </TABLE>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         Recompensas del marketplace creadas por profesores.
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <TABLE NAME="local_meritcoin_rewards" COMMENT="Marketplace rewards created by teachers">
+      <FIELDS>
+        <FIELD NAME="id"           TYPE="int"    LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="courseid"     TYPE="int"    LENGTH="10"  NOTNULL="true"/>
+        <FIELD NAME="teacherid"    TYPE="int"    LENGTH="10"  NOTNULL="true"/>
+        <FIELD NAME="name"         TYPE="char"   LENGTH="255" NOTNULL="true"/>
+        <FIELD NAME="description"  TYPE="text"   NOTNULL="false"/>
+        <FIELD NAME="price_mrt"    TYPE="number" LENGTH="10"  DECIMALS="2" NOTNULL="true"/>
+        <FIELD NAME="active"       TYPE="int"    LENGTH="1"   NOTNULL="true" DEFAULT="1"/>
+        <FIELD NAME="timecreated"  TYPE="int"    LENGTH="10"  NOTNULL="true"/>
+        <FIELD NAME="timemodified" TYPE="int"    LENGTH="10"  NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="idx_course"  UNIQUE="false" FIELDS="courseid"/>
+        <INDEX NAME="idx_teacher" UNIQUE="false" FIELDS="teacherid"/>
+        <INDEX NAME="idx_active"  UNIQUE="false" FIELDS="active"/>
+      </INDEXES>
+    </TABLE>
+
+        <!-- ═══════════════════════════════════════════════════════════════════════
+         Historial de canjes del marketplace.
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <TABLE NAME="local_meritcoin_redemptions" COMMENT="Marketplace redemption history">
+      <FIELDS>
+        <FIELD NAME="id"          TYPE="int"    LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="userid"      TYPE="int"    LENGTH="10"  NOTNULL="true"/>
+        <FIELD NAME="rewardid"    TYPE="int"    LENGTH="10"  NOTNULL="true"/>
+        <FIELD NAME="courseid"    TYPE="int"    LENGTH="10"  NOTNULL="true"/>
+        <FIELD NAME="coins_spent" TYPE="number" LENGTH="10"  DECIMALS="2" NOTNULL="true"/>
+        <FIELD NAME="tx_hash"     TYPE="char"   LENGTH="66"  NOTNULL="false"
+               COMMENT="Hash de la transacción blockchain; NULL mientras no se procese"/>
+        <FIELD NAME="status"      TYPE="char"   LENGTH="20"  NOTNULL="true" DEFAULT="pending"
+               COMMENT="pending, confirmed, failed"/>
+        <FIELD NAME="attempts"    TYPE="int"    LENGTH="3"   NOTNULL="true" DEFAULT="0"
+               COMMENT="Intentos de procesamiento en blockchain"/>
+        <FIELD NAME="last_error"  TYPE="text"   NOTNULL="false"
+               COMMENT="Último error del backend al procesar el canje"/>
+        <FIELD NAME="timecreated" TYPE="int"    LENGTH="10"  NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="idx_user"       UNIQUE="false" FIELDS="userid"/>
+        <INDEX NAME="idx_reward"     UNIQUE="false" FIELDS="rewardid"/>
+        <INDEX NAME="idx_course"     UNIQUE="false" FIELDS="courseid"/>
+        <INDEX NAME="idx_status"     UNIQUE="false" FIELDS="status"
+               COMMENT="Filtra canjes pending en la tarea programada"/>
+        <INDEX NAME="uq_user_reward" UNIQUE="true"  FIELDS="userid,rewardid"/>
+      </INDEXES>
+    </TABLE>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         Tipos de insignia configurables por el admin.
+         Los tipos sistema (is_system=1) no pueden eliminarse.
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <TABLE NAME="local_meritcoin_badge_types" COMMENT="Badge types: system defaults + custom">
+      <FIELDS>
+        <FIELD NAME="id"          TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="name"        TYPE="char" LENGTH="100" NOTNULL="true"
+               COMMENT="Nombre visible del tipo (ej: Excelencia Académica)"/>
+        <FIELD NAME="shortname"   TYPE="char" LENGTH="50"  NOTNULL="true"
+               COMMENT="Clave interna única (ej: excellence)"/>
+        <FIELD NAME="description" TYPE="text" NOTNULL="false"
+               COMMENT="Qué representa este tipo de insignia"/>
+        <FIELD NAME="criteria"    TYPE="text" NOTNULL="false"
+               COMMENT="Criterios para obtener la insignia (texto libre)"/>
+        <FIELD NAME="color"       TYPE="char" LENGTH="7"   NOTNULL="true" DEFAULT="#f0c040"
+               COMMENT="Color HEX para el pill del tipo"/>
+        <FIELD NAME="icon"        TYPE="char" LENGTH="50"  NOTNULL="true" DEFAULT="fa-award"
+               COMMENT="Clase FontAwesome (ej: fa-star, fa-crown)"/>
+        <FIELD NAME="image_url"   TYPE="char" LENGTH="500" NOTNULL="false"
+               COMMENT="URL de imagen decorativa opcional"/>
+        <FIELD NAME="backend_id"  TYPE="char" LENGTH="255" NOTNULL="false" DEFAULT=""
+               COMMENT="UUID del tipo de insignia en el backend MeritCoin"/>
+        <FIELD NAME="is_system"   TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="0"
+               COMMENT="1 = tipo base no eliminable, 0 = personalizado"/>
+        <FIELD NAME="enabled"     TYPE="int"  LENGTH="1"   NOTNULL="true" DEFAULT="1"
+               COMMENT="1 = activo, 0 = deshabilitado"/>
+        <FIELD NAME="sortorder"   TYPE="int"  LENGTH="5"   NOTNULL="true" DEFAULT="0"
+               COMMENT="Orden de aparición en formularios"/>
+        <FIELD NAME="createdby"   TYPE="int"  LENGTH="10"  NOTNULL="false"
+               COMMENT="userid del creador; NULL si es tipo sistema"/>
+        <FIELD NAME="timecreated" TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary"      TYPE="primary" FIELDS="id"/>
+        <KEY NAME="uq_shortname" TYPE="unique"  FIELDS="shortname"
+             COMMENT="Shortname único globalmente"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="idx_is_system" UNIQUE="false" FIELDS="is_system"/>
+        <INDEX NAME="idx_enabled"   UNIQUE="false" FIELDS="enabled"/>
+        <INDEX NAME="idx_sortorder" UNIQUE="false" FIELDS="sortorder"/>
+      </INDEXES>
+    </TABLE>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         Plantillas de insignia reutilizables.
+         scope=global (admin) → disponibles para todos los cursos.
+         scope=course (profesor) → solo visibles en su curso.
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <TABLE NAME="local_meritcoin_badge_templates" COMMENT="Reusable badge templates">
+      <FIELDS>
+        <FIELD NAME="id"           TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="name"         TYPE="char" LENGTH="255" NOTNULL="true"
+               COMMENT="Nombre de la insignia (aparece en el certificado)"/>
+        <FIELD NAME="description"  TYPE="text" NOTNULL="false"
+               COMMENT="Descripción del logro que representa"/>
+        <FIELD NAME="criteria"     TYPE="text" NOTNULL="false"
+               COMMENT="Criterios para obtener la insignia (texto libre)"/>
+        <FIELD NAME="type_id"      TYPE="int"  LENGTH="10"  NOTNULL="true"
+               COMMENT="FK → local_meritcoin_badge_types.id"/>
+        <FIELD NAME="image_url"    TYPE="char" LENGTH="255" NOTNULL="false"
+               COMMENT="URL de imagen decorativa opcional"/>
+        <FIELD NAME="scope"        TYPE="char" LENGTH="10"  NOTNULL="true" DEFAULT="course"
+               COMMENT="global (admin) o course (profesor)"/>
+        <FIELD NAME="courseid"     TYPE="int"  LENGTH="10"  NOTNULL="false"
+               COMMENT="NULL si scope=global; ID del curso si scope=course"/>
+        <FIELD NAME="createdby"    TYPE="int"  LENGTH="10"  NOTNULL="true"
+               COMMENT="userid del profesor o admin que creó la plantilla"/>
+        <FIELD NAME="timecreated"  TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timemodified" TYPE="int"  LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="fk_type" TYPE="foreign" FIELDS="type_id"
+             REFTABLE="local_meritcoin_badge_types" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="idx_createdby" UNIQUE="false" FIELDS="createdby"/>
+        <INDEX NAME="idx_courseid"  UNIQUE="false" FIELDS="courseid"/>
+        <INDEX NAME="idx_scope"     UNIQUE="false" FIELDS="scope"/>
+      </INDEXES>
+    </TABLE>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         Insignias otorgadas a estudiantes.
+         Cada registro es una insignia única con su hash de verificación.
+         templateid puede ser NULL para insignias otorgadas directamente
+         sin usar una plantilla previa.
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <TABLE NAME="local_meritcoin_badges" COMMENT="Badges awarded to students">
+      <FIELDS>
+        <FIELD NAME="id"              TYPE="int"    LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="templateid"      TYPE="int"    LENGTH="10"  NOTNULL="false"
+               COMMENT="FK → local_meritcoin_badge_templates.id; NULL = otorgada directamente"/>
+        <FIELD NAME="userid"          TYPE="int"    LENGTH="10"  NOTNULL="true"
+               COMMENT="Estudiante que recibe la insignia"/>
+        <FIELD NAME="courseid"        TYPE="int"    LENGTH="10"  NOTNULL="true"/>
+        <FIELD NAME="badge_type"      TYPE="char"   LENGTH="50"  NOTNULL="true"
+               COMMENT="Shortname del tipo snapshot al momento de otorgar"/>
+        <FIELD NAME="badge_name"      TYPE="char"   LENGTH="255" NOTNULL="true"
+               COMMENT="Nombre snapshot al momento de otorgar"/>
+        <FIELD NAME="description"     TYPE="text"   NOTNULL="false"
+               COMMENT="Descripción snapshot al momento de otorgar"/>
+        <FIELD NAME="criteria"        TYPE="text"   NOTNULL="false"
+               COMMENT="Criterios snapshot al momento de otorgar"/>
+        <FIELD NAME="image_url"       TYPE="char"   LENGTH="500" NOTNULL="false"
+               COMMENT="URL de imagen snapshot al momento de otorgar"/>
+        <FIELD NAME="issued_by"       TYPE="int"    LENGTH="10"  NOTNULL="true"
+               COMMENT="userid del profesor que otorgó la insignia"/>
+        <FIELD NAME="verify_hash"     TYPE="char"   LENGTH="64"  NOTNULL="true"
+               COMMENT="SHA-256 único para verificación pública"/>
+        <FIELD NAME="award_id" TYPE="char" LENGTH="36" NOTNULL="false" DEFAULT="" SEQUENCE="false" 
+               COMMENT="UUID del award en el backend MeritCoin"/>
+        <FIELD NAME="coins_threshold" TYPE="number" LENGTH="10"  DECIMALS="2" NOTNULL="true" DEFAULT="0"
+               COMMENT="Reservado: umbral de coins asociado al otorgamiento (uso futuro)"/>
+        <FIELD NAME="notes"           TYPE="text"   NOTNULL="false"
+               COMMENT="Nota interna del profesor (no visible al estudiante)"/>
+        <FIELD NAME="timecreated"     TYPE="int"    LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="timemodified"    TYPE="int"    LENGTH="10"  NOTNULL="true" DEFAULT="0"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary"     TYPE="primary" FIELDS="id"/>
+        <KEY NAME="uq_hash"     TYPE="unique"  FIELDS="verify_hash"
+             COMMENT="Hash único globalmente"/>
+        <KEY NAME="fk_template" TYPE="foreign" FIELDS="templateid"
+             REFTABLE="local_meritcoin_badge_templates" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="idx_userid"      UNIQUE="false" FIELDS="userid"/>
+        <INDEX NAME="idx_courseid"    UNIQUE="false" FIELDS="courseid"/>
+        <INDEX NAME="idx_issued_by"   UNIQUE="false" FIELDS="issued_by"/>
+        <INDEX NAME="idx_user_course" UNIQUE="false" FIELDS="userid, courseid"/>
+        <INDEX NAME="idx_badge_type"  UNIQUE="false" FIELDS="badge_type"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_meritcoin_pilot_courses" COMMENT="Cursos marcados como piloto MeritCoin">
+       <FIELDS>
+         <FIELD NAME="id"            TYPE="int"  LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+         <FIELD NAME="courseid"      TYPE="int"  LENGTH="10" NOTNULL="true"/>
+         <FIELD NAME="pilot_enabled" TYPE="int"  LENGTH="1"  NOTNULL="true" DEFAULT="1"/>
+         <FIELD NAME="groupid"       TYPE="int"  LENGTH="10" NOTNULL="false"/>
+         <FIELD NAME="expires_at"    TYPE="int"  LENGTH="10" NOTNULL="false"/>
+         <FIELD NAME="created_by"    TYPE="int"  LENGTH="10" NOTNULL="true"/>
+         <FIELD NAME="created_at"    TYPE="int"  LENGTH="10" NOTNULL="true"/>
+       </FIELDS>
+       <KEYS>
+         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+         <KEY NAME="uq_courseid" TYPE="unique" FIELDS="courseid"/>
+       </KEYS>
+    </TABLE>
+
+    <TABLE NAME="local_meritcoin_wallets" COMMENT="Caché local de wallets custodiales">
+       <FIELDS>
+         <FIELD NAME="id"             TYPE="int"  LENGTH="10"  NOTNULL="true" SEQUENCE="true"/>
+         <FIELD NAME="userid"         TYPE="int"  LENGTH="10"  NOTNULL="true"/>
+         <FIELD NAME="wallet_address" TYPE="char" LENGTH="42"  NOTNULL="true"/>
+         <FIELD NAME="status"         TYPE="char" LENGTH="20"  NOTNULL="true" DEFAULT="active"/>
+         <FIELD NAME="provisioned_at" TYPE="int"  LENGTH="10"  NOTNULL="true"/>
+       </FIELDS>
+       <KEYS>
+         <KEY NAME="primary"  TYPE="primary" FIELDS="id"/>
+         <KEY NAME="uq_userid" TYPE="unique" FIELDS="userid"/>
+       </KEYS>
+    </TABLE>
+
+  </TABLES>
+</XMLDB>
